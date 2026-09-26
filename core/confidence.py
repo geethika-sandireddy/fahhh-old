@@ -72,9 +72,11 @@ class ConfidenceState:
         if unc_sigma_px is not None and unc_sigma_px > config.UNCERTAINTY_BASE_PX:
             unc_span = max(1e-9, config.REACQUIRE_UNCERTAINTY_PX
                            - config.UNCERTAINTY_BASE_PX)
-            unc_frac = max(0.0, (unc_sigma_px - config.UNCERTAINTY_BASE_PX)
-                           / unc_span)
-            unc_penalty = (unc_frac ** 1.5) * 0.50
+            unc_frac = min(1.0, max(0.0, (unc_sigma_px - config.UNCERTAINTY_BASE_PX)
+                                    / unc_span))
+            # full penalty at the REACQUIRE line: a position whose sigma has
+            # reached the credibility limit carries no positional trust
+            unc_penalty = unc_frac ** 1.5
             self.position = max(0.0, self.position * (1.0 - unc_penalty))
 
         # Prediction: residual between model prior and observation, scaled by
