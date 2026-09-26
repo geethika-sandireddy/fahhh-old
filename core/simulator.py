@@ -408,7 +408,9 @@ class VideoInputSimulator:
         self.eph = EphemerisModel(zero_orbit, seed=seed)
         self.gimbal = Gimbal()
         self.disturbance = DisturbanceEngine()   # zero-level: no extra motion
-        self.detector = DetectionEngine()
+        from core.video_detector import VideoBeaconDetector
+        self.detector = VideoBeaconDetector(
+            target_px=int(getattr(config, "TARGET_SIZE_PX", 10)))
         # video mode: the whole frame is the sensor - the association gate
         # spans the video's own angular FOV so the beacon stays associated
         # across its full sweep instead of being knocked out by servo lag.
