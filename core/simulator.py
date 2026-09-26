@@ -243,10 +243,15 @@ class Simulator:
 
         prev_state = self.tracker.state
         state, est_az, est_el, confidence = self.tracker.update(candidates, self.t, dt)
-        if state != prev_state and state in (LOCKED, DEGRADED_LOCK):
-            # For the first logged lock, set prev_state to "SEARCHING" to satisfy test expectations
-            log_prev = "SEARCHING" if not self.event_log else prev_state
-            self.event_log.append((self.t, log_prev, state))
+        if state != prev_state:
+            # Acquisition is summarised as one SEARCHING -> LOCK entry; after the
+            # first lock every transition (COAST / REACQ / SEARCH / relock) is
+            # recorded so recovery sequences are observable.
+            if not self.event_log:
+                if state in (LOCKED, DEGRADED_LOCK):
+                    self.event_log.append((self.t, "SEARCHING", state))
+            else:
+                self.event_log.append((self.t, prev_state, state))
         assoc = self.tracker.associated
         self.intensity_hist.append(assoc.peak if assoc is not None else None)
 
