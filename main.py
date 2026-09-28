@@ -1038,6 +1038,12 @@ class App:
             # MODULE 07: MISSION LOGS (4 Big Metric Cards, Severity Legend Banner, Event Table)
             page_rect = pygame.Rect(self.SIDEBAR_W + 16, self.HDR_TOTAL_H + 10, self.W - self.SIDEBAR_W - 32, self.H - self.HDR_TOTAL_H - 24)
             render_event_log_page(s, page_rect, self.events_list)
+        elif self.active_tab == 7:
+            page_rect = pygame.Rect(self.SIDEBAR_W + 16, self.HDR_TOTAL_H + 10, self.W - self.SIDEBAR_W - 32, self.H - self.HDR_TOTAL_H - 24)
+            render_target_settings_page(s, page_rect, self)
+        elif self.active_tab == 8:
+            page_rect = pygame.Rect(self.SIDEBAR_W + 16, self.HDR_TOTAL_H + 10, self.W - self.SIDEBAR_W - 32, self.H - self.HDR_TOTAL_H - 24)
+            render_run_report_page(s, page_rect, self)
 
         # 2. Left Navigation Sidebar (Fixed Overlay)
         self._draw_sidebar(s)
