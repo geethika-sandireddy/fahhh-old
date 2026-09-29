@@ -406,14 +406,9 @@ def handle_report_click(app, pos):
     if recorder is None:
         return False
     if rects.get("start") and rects["start"].collidepoint(pos):
-        recorder.start(app._run_metadata(), sim_time=getattr(app.sim, "t", 0.0))
-        app.events_list.insert(0, (app._utc_event_time(), "INFO", "RUN-REPORT", "Evidence capture STARTED"))
-        return True
+        return app._start_run()
     if rects.get("stop") and rects["stop"].collidepoint(pos):
-        report = recorder.stop(app.sim, reason="MANUAL STOP")
-        if report:
-            app.events_list.insert(0, (app._utc_event_time(), "INFO", "RUN-REPORT", f"Evidence capture STOPPED · {report.get('run_id','')}"))
-        return True
+        return app._stop_run_and_report()
     if rects.get("open") and rects["open"].collidepoint(pos):
         recorder.open_latest(prefer_pdf=True)
         return True

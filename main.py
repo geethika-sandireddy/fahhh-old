@@ -8,7 +8,7 @@ Layout (1600 × 900):
   Bottom    : y 760 ..900   — PAT pipeline stepper + error graph + beam strip
 
 Keyboard:
-  1-5  scenario preset   SPACE pause/resume   R reset   S screenshot
+    1-5  scenario preset   SPACE pause/resume   R reset
   6-8  platform mode     A cycle atmosphere   V FOV grid   F fullscreen
   ESC  quit
 
@@ -122,6 +122,7 @@ class App:
         self.opt_model = OpticalLinkModel()
         self.stress_mgr = StressTestManager()
         self.run_recorder = MissionRunRecorder(config.LOG_DIR)
+        self._has_run = False
 
         self.events_list = [
             (time.strftime("%H:%M:%S UTC", time.gmtime()), "INFO", "OPT-LINK", "Carrier acquisition confirmed. Coarse alignment loop ACTIVE"),
@@ -175,7 +176,6 @@ class App:
         self.eph_pred_az   = None
         self.eph_pred_el   = None
         self.show_gt    = False
-        self.show_diag  = False
         self.compare    = self._load_compare()
         self.error_spark = deque(maxlen=1800)
         self.show_ps_modal = False
@@ -211,12 +211,11 @@ class App:
         self.buttons = {
             "PAUSE":      W.Button((0, 0, 80, 24), "PAUSE",  T.C.AMBER),
             "RESET":      W.Button((0, 0, 80, 24), "RESET",  T.C.CYAN),
-            "SHOT":       W.Button((0, 0, 80, 24), "SHOT",   T.C.GREEN),
+            "STOP_REPORT": W.Button((0, 0, 80, 24), "STOP & REPORT", T.C.AMBER),
             "GT":         W.Button((0, 0, 80, 24), "GT OFF", T.C.PURPLE),
-            "DIAG":       W.Button((0, 0, 80, 24), "DIAG",   T.C.TEXT_DIM),
+            "START_RUN":  W.Button((0, 0, 80, 24), "START RUN", T.C.GREEN),
             "LOAD_VIDEO": W.Button((0, 0, 80, 24), "LOAD MP4", T.C.AMBER),
         }
-        self._screenshot_n = 0
 
         self.chips = {}
         for name in config.PRESET_ORDER:
@@ -386,9 +385,9 @@ class App:
         if "PAUSE" in self.buttons:
             self.buttons["PAUSE"].rect = pygame.Rect(bx0, r1_y, bw, bh)
             self.buttons["RESET"].rect = pygame.Rect(bx0 + bw + 4, r1_y, bw, bh)
-            self.buttons["SHOT"].rect = pygame.Rect(bx0 + (bw + 4) * 2, r1_y, bw, bh)
+            self.buttons["STOP_REPORT"].rect = pygame.Rect(bx0 + (bw + 4) * 2, r1_y, bw, bh)
             self.buttons["GT"].rect = pygame.Rect(bx0, r2_y, bw, bh)
-            self.buttons["DIAG"].rect = pygame.Rect(bx0 + bw + 4, r2_y, bw, bh)
+            self.buttons["START_RUN"].rect = pygame.Rect(bx0 + bw + 4, r2_y, bw, bh)
             self.buttons["LOAD_VIDEO"].rect = pygame.Rect(bx0 + (bw + 4) * 2, r2_y, bw, bh)
 
 # Mission pages handle sizing dynamically
@@ -460,7 +459,8 @@ class App:
                 elif ev.type == pygame.MOUSEMOTION:
                     self._mouse_move(self._logical_mouse_pos(ev.pos), ev.buttons)
 
-            if not self.paused and not self.video_done:
+            if (getattr(self, "run_recorder", None) is not None
+                    and self.run_recorder.active and not self.paused and not self.video_done):
                 step_now = True
                 if self.video_mode:
                     v_fps = max(1.0, float(getattr(self.sim, "video_fps", 30.0)))
@@ -516,7 +516,8 @@ class App:
             pygame.display.flip()
         if getattr(self, "run_recorder", None) is not None and self.run_recorder.active:
             self.run_recorder.stop(self.sim, reason="APPLICATION EXIT")
-        self._final_report()
+        if self._has_run:
+            self._final_report()
         pygame.quit()
 
     # -------------------------------------------------------------- events
@@ -546,8 +547,6 @@ class App:
             self._recompute_layout()
         elif pygame.K_r == key:
             self._reset()
-        elif pygame.K_s == key:
-            self._screenshot()
         elif pygame.K_l == key:
             self._load_video()
         elif pygame.K_v == key:
@@ -692,14 +691,13 @@ class App:
                             b.label = "RESUME" if self.paused else "PAUSE"
                     elif name == "RESET":
                         self._reset()
-                    elif name == "SHOT":
-                        self._screenshot()
+                    elif name == "START_RUN":
+                        self._start_run()
+                    elif name == "STOP_REPORT":
+                        self._stop_run_and_report(show_report=True)
                     elif name == "GT":
                         self.show_gt = not self.show_gt
                         b.label = "GT ON" if self.show_gt else "GT OFF"
-                    elif name == "DIAG":
-                        self.show_diag = not self.show_diag
-                        b.label = "DIAG ‹" if self.show_diag else "DIAG"
                     elif name == "LOAD_VIDEO":
                         self._load_video()
                     return
@@ -818,6 +816,31 @@ class App:
         if len(self.events_list) > 100:
             self.events_list.pop()
 
+    def _start_run(self):
+        recorder = getattr(self, "run_recorder", None)
+        if recorder is None or recorder.active:
+            return False
+        if not recorder.start(self._run_metadata(), sim_time=getattr(self.sim, "t", 0.0)):
+            return False
+        self._has_run = True
+        self.paused = False
+        self.buttons["PAUSE"].label = "PAUSE"
+        self.events_list.insert(0, (self._utc_event_time(), "INFO", "RUN-REPORT", "Tracking run STARTED"))
+        return True
+
+    def _stop_run_and_report(self, show_report=False, reason="MANUAL STOP"):
+        recorder = getattr(self, "run_recorder", None)
+        if recorder is None or not recorder.active:
+            return False
+        report = recorder.stop(self.sim, reason=reason)
+        if not report:
+            return False
+        self.events_list.insert(0, (self._utc_event_time(), "INFO", "RUN-REPORT", f"Run STOPPED · {report.get('run_id', '')}"))
+        if show_report:
+            self.active_tab = 8
+            self._recompute_layout()
+        return True
+
     def _toggle_ai_model(self):
         import ai.classifier as ai_clf
         cur = getattr(ai_clf, "ACTIVE_MODEL", "LINEAR")
@@ -861,21 +884,6 @@ class App:
         self.sync_sliders()
         self.paused = False
         self.buttons["PAUSE"].label = "PAUSE"
-        try:
-            res = self.sim.step()
-            if res is not None:
-                self.perf.record_frame(self.sim)
-        except Exception:
-            pass
-
-    def _screenshot(self):
-        os.makedirs(config.LOG_DIR, exist_ok=True)
-        self._screenshot_n += 1
-        path = os.path.join(
-            config.LOG_DIR,
-            f"shot_{self.preset.lower()}_{self._screenshot_n}.png")
-        pygame.image.save(self.screen, path)
-        print(f"screenshot -> {path}", flush=True)
 
     def _load_video(self):
         try:
@@ -918,12 +926,6 @@ class App:
         self.buttons["PAUSE"].label = "PAUSE"
         print(f"video loaded -> {path} "
               f"({self.sim.video_w}x{self.sim.video_h} @ {self.sim.video_fps:.1f} fps)")
-        try:
-            res = self.sim.step()
-            if res is not None:
-                self.perf.record_frame(self.sim)
-        except Exception as ex:
-            print(f"video step error: {ex}")
 
     def _utc_event_time(self):
         return time.strftime("%H:%M:%S UTC", time.gmtime())
@@ -980,12 +982,8 @@ class App:
 
         res = self.sim.last_result
         if res is None:
-            try:
-                res = self.sim.step()
-            except Exception:
-                res = None
-        if res is None:
             res = {}
+            self.sim.last_result = res
         fps = self.clock.get_fps()
         dt = 1.0 / max(1.0, fps)
         hist_pt = self.opt_model.update_from_sim(res, self.stress_mgr)
@@ -1319,7 +1317,7 @@ class App:
 
     def _draw_footer(self, surf):
         T.text(surf, (self.SIDEBAR_W + 12, self.H - 14),
-               "TAB view  ·  1-6 preset  ·  7-9 plat  ·  A atmos  ·  +/- targets  ·  N randomize  ·  M motion  ·  H HUD  ·  SPACE pause  ·  R reset  ·  S shot  ·  V grid  ·  F full  ·  P audit",
+               "TAB view  ·  1-6 preset  ·  7-9 plat  ·  A atmos  ·  +/- targets  ·  N randomize  ·  M motion  ·  H HUD  ·  SPACE pause  ·  R reset  ·  V grid  ·  F full  ·  P audit",
                8, T.C.TEXT_FAINT)
 
     # ---------------------------------------------------------------- camera
@@ -1414,14 +1412,16 @@ class App:
 
     def _draw_camera_story(self, surf, dest):
         """Slim status strip at bottom of camera."""
-        res = self.sim.last_result
-        st  = res["state"]
+        res = self.sim.last_result or {}
+        st = res.get("state", "SEARCHING")
         boresight_err = res.get("boresight_error_px")
         if boresight_err is None and getattr(self, "video_mode", False):
             boresight_err = res.get("optical_offset_px")
         is_aligned = (boresight_err is not None and boresight_err <= 15.0)
 
-        if not res["in_fov"]:
+        if not res:
+            label, col = "RUN READY · CONFIGURATION STAGED", T.C.CYAN_ELEC
+        elif not res.get("in_fov", False):
             label, col = "OUTSIDE FIELD OF VIEW", T.C.TEXT_FAINT
         elif st == "SEARCHING":
             label, col = "ACQUISITION WINDOW · SCANNING", T.C.AMBER
@@ -1863,8 +1863,8 @@ class App:
         self._draw_camera_panel(surf, panel_rect)
 
     def _draw_pat_stepper(self, surf, box):
-        res  = self.sim.last_result
-        st   = res["state"]
+        res = self.sim.last_result or {}
+        st = res.get("state", "SEARCHING")
         boresight_err = res.get("boresight_error_px")
         if boresight_err is None and getattr(self, "video_mode", False):
             boresight_err = res.get("optical_offset_px")
@@ -2053,14 +2053,16 @@ class App:
 
     def _draw_beam_strip(self, surf, box):
         cx = box.centerx
-        res = self.sim.last_result
-        err = res["pointing_err_deg"]
-        col = (T.C.GREEN if err < config.FINE_ACQUISITION_REGION_DEG
-               else (T.C.AMBER if err < 0.30 else T.C.RED))
+        res = self.sim.last_result or {}
+        err = res.get("pointing_err_deg", 0.0)
+        col = (T.C.TEXT_DIM if not res else
+               T.C.GREEN if err < config.FINE_ACQUISITION_REGION_DEG else
+               T.C.AMBER if err < 0.30 else T.C.RED)
 
         # Top error readout
         T.text(surf, (cx, box.y + 2), "POINT ERROR", 11, T.C.TEXT_DIM, bold=True, anchor="tc")
-        T.text(surf, (cx, box.y + 18), f"{err*1000:.1f} mdeg", 13, col, bold=True, anchor="tc", mono=True)
+        err_text = f"{err*1000:.1f} mdeg" if res else "--"
+        T.text(surf, (cx, box.y + 18), err_text, 13, col, bold=True, anchor="tc", mono=True)
 
         # Dynamic SAT-B orbital position
         truth_az = res.get("truth_az", 0.0)
@@ -2177,9 +2179,11 @@ class App:
 
         # Status / timing row
         stat_y = y + h - 18
-        run_col = T.C.AMBER if self.paused else T.C.GREEN
+        run_active = bool(getattr(getattr(self, "run_recorder", None), "active", False))
+        run_col = T.C.AMBER if run_active and self.paused else T.C.GREEN if run_active else T.C.TEXT_DIM
+        run_status = "PAUSED" if run_active and self.paused else "RUNNING" if run_active else "READY"
         pygame.draw.circle(surf, run_col, (x + 16, stat_y + 4), 3.5)
-        T.text(surf, (x + 24, stat_y), "PAUSED" if self.paused else "SYSTEM ACTIVE", 11, run_col, bold=True)
+        T.text(surf, (x + 24, stat_y), run_status, 11, run_col, bold=True)
         if self.pnl_mission_h == 0:
             T.text(surf, (x + w - 12, stat_y), f"{self.preset} · {self._platform_label()}", 10.5, T.C.CYAN_ELEC, anchor="tr", bold=True)
         else:
@@ -2191,8 +2195,8 @@ class App:
         r = pygame.Rect(x, y, w, h)
         T.card(surf, r, fill=T.C.PANEL_2, border=T.C.BORDER)
         T.section_hdr(surf, x + 10, y + 6, "MISSION PROFILE & LINK", panel_w=w - 20)
-        res = self.sim.last_result
-        st  = res["state"]
+        res = self.sim.last_result or {}
+        st = res.get("state", "SEARCHING")
         lock = st in LOCKED_STATES
 
         rows = [
@@ -2209,11 +2213,13 @@ class App:
     # ── Performance ────────────────────────────────────────────────────────────
     def _panel_performance(self, surf):
         x, y, w, h = self.PNL_INN, self.pnl_perf_y, self.PNL_IW, self.pnl_perf_h
-        res = self.sim.last_result
+        res = self.sim.last_result or {}
         st  = self.perf.live_stats()
-        err = res["pointing_err_deg"]
-        ec  = (T.C.GREEN if err < config.FINE_ACQUISITION_REGION_DEG
-               else (T.C.AMBER if err < 0.30 else T.C.RED))
+        has_sample = bool(res)
+        err = res.get("pointing_err_deg", 0.0)
+        ec = (T.C.TEXT_DIM if not has_sample else
+              T.C.GREEN if err < config.FINE_ACQUISITION_REGION_DEG else
+              T.C.AMBER if err < 0.30 else T.C.RED)
         r   = pygame.Rect(x, y, w, h)
         T.card(surf, r, fill=T.C.PANEL_2, border=T.C.BORDER)
         pygame.draw.rect(surf, ec, (x, y, 4, h))
@@ -2225,12 +2231,13 @@ class App:
         pygame.draw.rect(surf, ec, err_r, 1, border_radius=4)
         T.text(surf, (err_r.x + 10, err_r.y + 4), "POINTING ERROR", 11, T.C.TEXT_DIM, bold=True)
         err_mdeg = err * 1000.0
-        T.text(surf, (err_r.x + 10, err_r.y + 18), f"{err_mdeg:5.1f} mdeg", 18, ec, bold=True, mono=True)
+        err_text = f"{err_mdeg:5.1f} mdeg" if has_sample else "--"
+        T.text(surf, (err_r.x + 10, err_r.y + 18), err_text, 18, ec, bold=True, mono=True)
         boresight_err = res.get("boresight_error_px")
         if boresight_err is None and getattr(self, "video_mode", False):
             boresight_err = res.get("optical_offset_px")
         is_aligned = (boresight_err is not None and boresight_err <= 15.0)
-        pt_status = "LOCKED" if (err < config.FINE_ACQUISITION_REGION_DEG and is_aligned) else ("ALIGNING" if not getattr(self, "video_mode", False) else "TRACKING")
+        pt_status = "READY" if not has_sample else ("LOCKED" if (err < config.FINE_ACQUISITION_REGION_DEG and is_aligned) else ("ALIGNING" if not getattr(self, "video_mode", False) else "TRACKING"))
         T.text(surf, (err_r.right - 10, err_r.centery), pt_status, 12, ec, bold=True, anchor="rc")
 
         # KPI Trio
@@ -2311,8 +2318,14 @@ class App:
         r = pygame.Rect(x, y, w, h)
         T.card(surf, r, fill=T.C.PANEL_2, border=T.C.BORDER)
         T.section_hdr(surf, x + 10, y + 5, "MISSION CONTROLS", panel_w=w - 20)
-        for b in self.buttons.values():
-            b.draw(surf)
+        active = bool(getattr(getattr(self, "run_recorder", None), "active", False))
+        for name, button in self.buttons.items():
+            if name == "START_RUN" and active:
+                button.draw(surf, active_color=T.C.TEXT_DIM)
+            elif name == "STOP_REPORT" and not active:
+                button.draw(surf, active_color=T.C.TEXT_DIM)
+            else:
+                button.draw(surf)
 
     def _load_compare(self):
         try:
