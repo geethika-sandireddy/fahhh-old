@@ -252,6 +252,43 @@ class StressTestManager:
                         ts = time.strftime("%H:%M:%S UTC", time.gmtime())
                         events_list.insert(0, (ts, "INFO", "STRESS-SUITE", f"Timeout auto-cleared: {sc['name']}"))
 
+    def apply_to_sim(self, sim):
+        """Translate visible stress injections into the real simulator inputs.
+
+        Multiple cards are additive and therefore let the judge observe a
+        combined disturbance response without leaving the stress page.
+        """
+        if sim is None or not hasattr(sim, "disturbance"):
+            return
+        d = sim.disturbance
+        base = getattr(self, "_base_disturbance", None)
+        if base is None:
+            self._base_disturbance = {
+                k: float(getattr(d, k, 0.0))
+                for k in ("turbulence", "vibration", "sensor_noise", "jerk_prob", "beacon_fade")
+            }
+            base = self._base_disturbance
+        vals = dict(base)
+        active = [k for k, sc in self.scenarios.items() if sc.get("active")]
+        # The factors are intentionally bounded so a stress card degrades the
+        # live loop instead of making the simulation numerically unstable.
+        if "atm_deg" in active:
+            vals["beacon_fade"] = max(vals["beacon_fade"], 55.0)
+            vals["sensor_noise"] = max(vals["sensor_noise"], 22.0)
+        if "beam_mis" in active:
+            vals["vibration"] = max(vals["vibration"], 68.0)
+            vals["jerk_prob"] = max(vals["jerk_prob"], 18.0)
+        if "turb_burst" in active:
+            vals["turbulence"] = max(vals["turbulence"], 78.0)
+            vals["sensor_noise"] = max(vals["sensor_noise"], 28.0)
+        if "sig_intr" in active:
+            vals["beacon_fade"] = 100.0
+        if "false_lock" in active:
+            vals["sensor_noise"] = max(vals["sensor_noise"], 48.0)
+            vals["beacon_fade"] = max(vals["beacon_fade"], 35.0)
+        for k, v in vals.items():
+            setattr(d, k, int(max(0.0, min(100.0, v))))
+
     def record_rx_power(self, val):
         self.rx_power_history.append(val)
 

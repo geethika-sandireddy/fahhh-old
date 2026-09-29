@@ -45,6 +45,14 @@ from ui.mission_pages import (
     render_false_lock_page,
     render_event_log_page,
 )
+from metrics.run_report import MissionRunRecorder
+from ui.evidence_pages import (
+    render_target_settings_page,
+    render_run_report_page,
+    render_live_stress_overlay,
+    handle_target_settings_click,
+    handle_report_click,
+)
 
 
 APP_W, APP_H = 1600, 900
@@ -107,10 +115,13 @@ class App:
             ("STRESS INJECTION", "STR", "05"),
             ("FALSE LOCK SUITE", "FLK", "06"),
             ("MISSION LOGS",     "LOG", "07"),
+            ("TARGET SETTINGS",   "TGT", "08"),
+            ("RUN REPORTS",       "RPT", "09"),
         ]
         self.active_tab = 0  # 0: TRACKING CONSOLE (Default on launch!)
         self.opt_model = OpticalLinkModel()
         self.stress_mgr = StressTestManager()
+        self.run_recorder = MissionRunRecorder(config.LOG_DIR)
 
         self.events_list = [
             (time.strftime("%H:%M:%S UTC", time.gmtime()), "INFO", "OPT-LINK", "Carrier acquisition confirmed. Coarse alignment loop ACTIVE"),
@@ -461,6 +472,9 @@ class App:
                         self.video_dt_accum = min(target_dt * 2.0, self.video_dt_accum - target_dt)
 
                 if step_now:
+                    # Stress cards are live inputs, not just visual annotations.
+                    self.stress_mgr.update(dt_w, self.events_list)
+                    self.stress_mgr.apply_to_sim(self.sim)
                     res = self.sim.step()
                     if res is None:
                         print("VIDEO ENDED - returning to normal application", flush=True)
@@ -492,12 +506,16 @@ class App:
                             self._video_report_saved = True
                     else:
                         self.perf.record_frame(self.sim)
+                        if getattr(self, "run_recorder", None) is not None:
+                            self.run_recorder.record(self.sim, self.perf, self.stress_mgr)
                         # Always record pointing error so the acquisition curve is live
                         self.error_spark.append(res["pointing_err_deg"])
                         self.eph_pred_az, self.eph_pred_el = self.sim.eph.predict_az_el(res["t"])
             self.apply_sliders()
             self._draw()
             pygame.display.flip()
+        if getattr(self, "run_recorder", None) is not None and self.run_recorder.active:
+            self.run_recorder.stop(self.sim, reason="APPLICATION EXIT")
         self._final_report()
         pygame.quit()
 
@@ -520,7 +538,7 @@ class App:
         elif pygame.K_TAB == key:
             self.active_tab = (self.active_tab + 1) % len(self.SIDEBAR_TABS)
             self._recompute_layout()
-        elif pygame.K_F1 <= key <= pygame.K_F7:
+        elif pygame.K_F1 <= key <= pygame.K_F9:
             self.active_tab = key - pygame.K_F1
             self._recompute_layout()
         elif pygame.K_c == key:
@@ -657,7 +675,13 @@ class App:
             return
 
         # 3. Handle active view controls
-        if self.active_tab == 0:
+        if self.active_tab == 7:
+            if button == 1 and handle_target_settings_click(self, pos):
+                return
+        elif self.active_tab == 8:
+            if button == 1 and handle_report_click(self, pos):
+                return
+        elif self.active_tab == 0:
             for name, b in self.buttons.items():
                 if button == 1 and b.hit(pos):
                     if name == "PAUSE":
@@ -806,6 +830,8 @@ class App:
             self.events_list.pop()
 
     def _reset(self, name=None, seed=None):
+        if getattr(self, "run_recorder", None) is not None and self.run_recorder.active:
+            self.run_recorder.stop(self.sim, reason="RESET / MODE CHANGE")
         if self.video_mode:
             from core.simulator import VideoInputSimulator
             truth = os.path.splitext(self.video_path)[0] + "_truth.csv"
@@ -899,6 +925,23 @@ class App:
         except Exception as ex:
             print(f"video step error: {ex}")
 
+    def _utc_event_time(self):
+        return time.strftime("%H:%M:%S UTC", time.gmtime())
+
+    def _run_metadata(self):
+        scene = getattr(self.sim, "scene", None)
+        beacon = getattr(scene, "beacon", None)
+        return {
+            "preset": self.preset,
+            "platform_mode": self.platform_mode,
+            "atmosphere": self.atmosphere,
+            "trajectory": getattr(self, "current_motion", "straight_line"),
+            "target_shape": getattr(beacon, "shape", self.shape_override or "SQUARE"),
+            "target_size_px": getattr(beacon, "size_px", self.size_override or 10),
+            "target_count": getattr(scene, "num_targets", getattr(self, "target_count", 1)),
+            "primary_target_id": getattr(beacon, "target_id", "TARGET-01"),
+        }
+
     def _final_report(self):
         st = self.perf.live_stats()
         p  = os.path.join(config.LOG_DIR, f"run_{int(time.time())}.csv")
@@ -945,7 +988,6 @@ class App:
             res = {}
         fps = self.clock.get_fps()
         dt = 1.0 / max(1.0, fps)
-        self.stress_mgr.update(dt, self.events_list)
         hist_pt = self.opt_model.update_from_sim(res, self.stress_mgr)
 
         # Record state change events
@@ -987,6 +1029,7 @@ class App:
             # MODULE 05: STRESS INJECTION (5 Interactive Scenario Cards, Live RX Waveform, Judge Demo Sequence)
             page_rect = pygame.Rect(self.SIDEBAR_W + 16, self.HDR_TOTAL_H + 10, self.W - self.SIDEBAR_W - 32, self.H - self.HDR_TOTAL_H - 24)
             render_stress_test_page(s, page_rect, self.stress_mgr, self.opt_model)
+            render_live_stress_overlay(s, page_rect, self.sim, self.stress_mgr)
         elif self.active_tab == 5:
             # MODULE 06: FALSE LOCK SUITE (Live Dynamic 5-Point Verification Matrix & Telemetry)
             page_rect = pygame.Rect(self.SIDEBAR_W + 16, self.HDR_TOTAL_H + 10, self.W - self.SIDEBAR_W - 32, self.H - self.HDR_TOTAL_H - 24)
@@ -995,6 +1038,12 @@ class App:
             # MODULE 07: MISSION LOGS (4 Big Metric Cards, Severity Legend Banner, Event Table)
             page_rect = pygame.Rect(self.SIDEBAR_W + 16, self.HDR_TOTAL_H + 10, self.W - self.SIDEBAR_W - 32, self.H - self.HDR_TOTAL_H - 24)
             render_event_log_page(s, page_rect, self.events_list)
+        elif self.active_tab == 7:
+            page_rect = pygame.Rect(self.SIDEBAR_W + 16, self.HDR_TOTAL_H + 10, self.W - self.SIDEBAR_W - 32, self.H - self.HDR_TOTAL_H - 24)
+            render_target_settings_page(s, page_rect, self)
+        elif self.active_tab == 8:
+            page_rect = pygame.Rect(self.SIDEBAR_W + 16, self.HDR_TOTAL_H + 10, self.W - self.SIDEBAR_W - 32, self.H - self.HDR_TOTAL_H - 24)
+            render_run_report_page(s, page_rect, self)
 
         # 2. Left Navigation Sidebar (Fixed Overlay)
         self._draw_sidebar(s)
