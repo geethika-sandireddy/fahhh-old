@@ -1066,10 +1066,10 @@ class App:
         pygame.draw.line(surf, (24, 40, 70), (0, self.HDR_H - 1), (self.SIDEBAR_W, self.HDR_H - 1), 1)
 
         if not self.sidebar_collapsed:
-            T.text(surf, (16, 6), "FSOC PAT LAB", 16, T.C.CYAN_ELEC, bold=True)
+            T.text(surf, (16, 6), "KIRANAKSH", 16, T.C.CYAN_ELEC, bold=True)
             T.text(surf, (16, 26), "ISRO CONSOLE · PS 26169", 11, T.C.TEXT_DIM, bold=True)
         else:
-            T.text(surf, (self.SIDEBAR_W // 2, 14), "FSOC", 14, T.C.CYAN_ELEC, bold=True, anchor="tc")
+            T.text(surf, (self.SIDEBAR_W // 2, 14), "KRN", 14, T.C.CYAN_ELEC, bold=True, anchor="tc")
 
         # Tabs
         mouse_pos = self._logical_mouse_pos(pygame.mouse.get_pos())
@@ -1154,7 +1154,7 @@ class App:
         pygame.draw.rect(surf, T.C.CYAN_ELEC, (self.SIDEBAR_W, 0, hdr_w, 2))
 
         # Title & Subtitle (dynamically scaled for narrower screens)
-        title_str = "FSOC MISSION CONTROL CONSOLE" if self.W >= 1480 else "FSOC MISSION CONTROL"
+        title_str = "KIRANAKSH"
         T.text(surf, (self.SIDEBAR_W + 16, 6), title_str, 15 if self.W >= 1480 else 14, T.C.TEXT, bold=True)
         T.text(surf, (self.SIDEBAR_W + 16, 25), "PAT LAB · ISRO PS 26169", 11, T.C.CYAN_ELEC, bold=True)
 
@@ -2413,44 +2413,8 @@ class App:
 
         # --- RIGHT COLUMN: INTERACTIVE CONFIGURATOR & INNOVATION SHOWCASE ---
         ry = body_y
-        T.text(surf, (col2_x, ry), "LIVE TARGET CONFIGURATOR (JUDGE DEMO)", 12, (255, 180, 0), bold=True)
-        ry += 22
 
-        # 1. Target Shape Buttons
-        T.text(surf, (col2_x, ry), "Target Geometry (PS Clause 3):", 11, T.C.TEXT_DIM, bold=True)
-        ry += 18
-        shapes = [("SQUARE", "SQUARE (PS Def)"), ("CIRCLE", "CIRCLE"), ("SPOT", "SPOT PSF")]
-        bw = (col2_w - 16) // 3
-        for idx, (skey, slbl) in enumerate(shapes):
-            bx = col2_x + idx * (bw + 8)
-            br = pygame.Rect(bx, ry, bw, 32)
-            self.ps_btn_rects[f"shape_{skey}"] = br
-            sel = (cur_shape == skey)
-            bbg = (6, 36, 26) if sel else (12, 22, 38)
-            bcol = T.C.GREEN if sel else (0, 180, 240)
-            pygame.draw.rect(surf, bbg, br, border_radius=4)
-            pygame.draw.rect(surf, bcol, br, 1 if not sel else 2, border_radius=4)
-            T.text(surf, (br.centerx, br.centery), slbl, 11, bcol, bold=True, anchor="cc")
-        ry += 42
-
-        # 2. Target Motion Trajectory Buttons
-        T.text(surf, (col2_x, ry), "Motion Trajectory (PS Clause 4):", 11, T.C.TEXT_DIM, bold=True)
-        ry += 18
-        motions = [("FIGURE_EIGHT", "FIGURE-8"), ("CIRCULAR", "CIRCULAR"), ("STRAIGHT_LINE", "STRAIGHT"), ("SPIRAL", "SPIRAL")]
-        mbw = (col2_w - 24) // 4
-        for idx, (mkey, mlbl) in enumerate(motions):
-            bx = col2_x + idx * (mbw + 8)
-            br = pygame.Rect(bx, ry, mbw, 32)
-            self.ps_btn_rects[f"motion_{mkey}"] = br
-            sel = (cur_motion == mkey)
-            bbg = (6, 36, 26) if sel else (12, 22, 38)
-            bcol = T.C.GREEN if sel else (0, 180, 240)
-            pygame.draw.rect(surf, bbg, br, border_radius=4)
-            pygame.draw.rect(surf, bcol, br, 1 if not sel else 2, border_radius=4)
-            T.text(surf, (br.centerx, br.centery), mlbl, 10.5, bcol, bold=True, anchor="cc")
-        ry += 44
-
-        # 3. Quick Stress Injections
+        # Quick Stress Injections
         T.text(surf, (col2_x, ry), "Live Stress & Occlusion Test:", 11, T.C.TEXT_DIM, bold=True)
         ry += 18
         inj_w = (col2_w - 12) // 2

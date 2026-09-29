@@ -762,38 +762,12 @@ def render_stress_test_page(surf, rect, stress_mgr: StressTestManager, opt: Opti
 
     # Right: RX Power Live Oscilloscope
     r2_y = main_y + r1_h + 12
-    r2_h = 160
+    r2_h = main_h - (r1_h + 12)
     r2_rect = pygame.Rect(right_x, r2_y, right_w, r2_h)
     T.card(surf, r2_rect, fill=C.PANEL_2, border=C.BORDER)
     T.section_title(surf, right_x + 16, r2_y + 12, "RX POWER — LIVE OSCILLOSCOPE", C.GREEN)
     _draw_telemetry_wave(surf, pygame.Rect(right_x + 16, r2_y + 42, right_w - 32, r2_h - 54),
                          list(stress_mgr.rx_power_history), -60.0, 10.0, C.GREEN, "dBm")
-
-    # Right: Judge Demo Sequence
-    r3_y = r2_y + r2_h + 12
-    r3_h = main_h - (r1_h + 12 + r2_h + 12)
-    r3_rect = pygame.Rect(right_x, r3_y, right_w, r3_h)
-    T.card(surf, r3_rect, fill=C.PANEL_2, border=C.BORDER)
-    T.section_title(surf, right_x + 16, r3_y + 12, "JUDGE DEMONSTRATION SUITE", C.AMBER)
-
-    steps = [
-        "1. Nominal Baseline: ESTABLISHED link verified",
-        "2. Trigger Atmospheric Loss: Observe SNR fall",
-        "3. Trigger Turbulence Scintillation: High-frequency ripple",
-        "4. Trigger False Lock: Demonstrate validation rejection",
-        "5. Clear Stress: Show autonomous link recovery",
-    ]
-    sy = r3_y + 42
-    for s_idx, stext in enumerate(steps):
-        sr = pygame.Rect(right_x + 14, sy, right_w - 28, 28)
-        stress_mgr.demo_rects[s_idx] = sr
-        is_active_step = (stress_mgr.demo_step == s_idx + 1)
-        step_bg = (48, 36, 12) if is_active_step else (10, 18, 36)
-        step_col = C.AMBER if is_active_step else C.TEXT_DIM
-        pygame.draw.rect(surf, step_bg, sr, border_radius=3)
-        pygame.draw.rect(surf, C.BORDER, sr, 1, border_radius=3)
-        T.text(surf, (sr.x + 10, sr.centery), stext, 12, step_col, bold=True, anchor="lc")
-        sy += 34
 
 
 # ---------------------------------------------------------------------------
@@ -859,11 +833,9 @@ def render_false_lock_page(surf, rect, sim=None, opt=None, stress_mgr=None):
 
     main_y = y0 + hdr_h + 14
     main_h = h - (hdr_h + 14)
-    left_w = int(w * 0.52)
-    right_x = x0 + left_w + 14
-    right_w = w - left_w - 14
+    left_w = w
 
-    # Left: 5 Verification Criteria Matrix
+    # 5 Verification Criteria Matrix
     crit_rect = pygame.Rect(x0, main_y, left_w, main_h)
     T.card(surf, crit_rect, fill=C.PANEL_2, border=C.BORDER)
     T.section_title(surf, x0 + 16, main_y + 14, "5-POINT CARRIER VERIFICATION CRITERIA", C.CYAN_ELEC)
@@ -889,41 +861,6 @@ def render_false_lock_page(surf, rect, sim=None, opt=None, stress_mgr=None):
         T.text(surf, (cr.right - 14, cr.y + 28), cthr, 11, C.TEXT_MUTED, anchor="tr", mono=True)
         T.text(surf, (cr.x + 86, cr.y + 34), cdesc, 11, C.TEXT_DIM, bold=False)
         cy += 72
-
-    # Right: Detection Algorithms (Top) & Anomaly Signatures (Bottom)
-    r1_h = int(main_h * 0.48)
-    r1_rect = pygame.Rect(right_x, main_y, right_w, r1_h)
-    T.card(surf, r1_rect, fill=C.PANEL_2, border=C.BORDER)
-    T.section_title(surf, right_x + 16, main_y + 12, "DETECTION ALGORITHMS SUITE", C.CYAN_ELEC)
-
-    algos = [
-        ("BER Threshold Monitor", "Continuous bit error measurement against valid acquisition window"),
-        ("Alignment Confidence Engine", "Pointing error vs. beam divergence ratio dynamic analysis"),
-        ("Signal Persistence Checker", "Power stability and carrier frequency persistence validation"),
-        ("Multi-Parameter Correlator", "Cross-correlation of BER, SNR, pointing, and servo jitter"),
-    ]
-    ay = main_y + 42
-    for aname, adesc in algos:
-        T.text(surf, (right_x + 16, ay), f"• {aname}", 13, C.CYAN_ELEC, bold=True)
-        T.text(surf, (right_x + 32, ay + 18), adesc, 12, C.TEXT_DIM, bold=False)
-        ay += 40
-
-    r2_y = main_y + r1_h + 14
-    r2_h = main_h - (r1_h + 14)
-    r2_rect = pygame.Rect(right_x, r2_y, right_w, r2_h)
-    T.card(surf, r2_rect, fill=C.PANEL_2, border=C.BORDER)
-    T.section_title(surf, right_x + 16, r2_y + 12, "ANOMALY REJECTION SIGNATURES", C.AMBER)
-
-    sigs = [
-        ("Type I: BER Mismatch", "BER exceeds threshold while carrier is asserted — flags ADC offset"),
-        ("Type II: Alignment Failure", "Pointing error exceeds envelope while tracking — flags gimbal drift"),
-        ("Type III: Noise Floor Lock", "High apparent SNR with degraded data — flags decoy glint lock"),
-    ]
-    sy = r2_y + 42
-    for sname, sdesc in sigs:
-        T.text(surf, (right_x + 16, sy), sname, 13, C.AMBER, bold=True)
-        T.text(surf, (right_x + 16, sy + 18), sdesc, 12, C.TEXT_DIM, bold=False)
-        sy += 42
 
 
 # ---------------------------------------------------------------------------
