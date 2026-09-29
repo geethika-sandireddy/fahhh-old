@@ -476,7 +476,6 @@ def render_ai_classifier_page(surf, rect, sim):
         ("NORMALIZED BLOB AREA", area_val, "Score 0–1", "Rejects diffuse nebulae", C.GREEN),
         ("CIRCULARITY INDEX", circ_val, "Threshold: > 0.85", "Gaussian PSF matching", C.GREEN),
         ("PEAK-TO-NOISE (SNR)", snr_val, "dB", "Threshold: > 18 dB", C.CYAN_ELEC),
-        ("SPECTRAL HUE DIST", hue_val, "Delta-E", "Threshold: < 0.10", C.GREEN),
     ]
     for i, (flbl, fval, funit, fsub, fcol) in enumerate(features):
         cr = pygame.Rect(x0 + i * (cw + 14), row1_y, cw, row1_h)
