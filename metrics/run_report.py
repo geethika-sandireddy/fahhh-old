@@ -557,7 +557,7 @@ class MissionRunRecorder:
             stress_rows += (
                 f"<tr><td>{html.escape(key)}</td><td>{row['frames']}</td>"
                 f"<td>{row['lock_retention_pct']:.1f}%</td><td>{row['mean_confidence_pct']:.1f}%</td>"
-                f"<td>{'n/a' if row['mean_pat_error_px'] is None else f\"{row['mean_pat_error_px']:.2f} px\"}</td>"
+                f"<td>{'n/a' if row['mean_pat_error_px'] is None else format(row['mean_pat_error_px'], '.2f') + ' px'}</td>"
                 f"<td>{row['mean_uncertainty_px']:.2f} px</td></tr>"
             )
         if not stress_rows:
@@ -573,7 +573,7 @@ class MissionRunRecorder:
                 f"<td>{html.escape(str(mm.get('preset','')))}</td>"
                 f"<td>{html.escape(str(sm.get('trajectory', mm.get('trajectory',''))))}</td>"
                 f"<td>{sm.get('fps_mean',0):.1f}</td>"
-                f"<td>{'n/a' if sm.get('pat_error_mean_px') is None else f\"{sm['pat_error_mean_px']:.2f}\"}</td>"
+                f"<td>{'n/a' if sm.get('pat_error_mean_px') is None else format(sm['pat_error_mean_px'], '.2f')}</td>"
                 f"<td>{sm.get('alignment_accuracy_pct',0):.1f}%</td>"
                 f"<td>{sm.get('lock_retention_pct',0):.1f}%</td></tr>"
             )
